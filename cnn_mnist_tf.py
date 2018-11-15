@@ -28,78 +28,100 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 def blockshaped(arr, nrows, ncols):
     """
-    Return an array of shape (n, nrows, ncols) where
-    n * nrows * ncols = arr.size
+    Return an array of shape (batch_size, n, nrows, ncols, channels) where
+    batchsize * n * nrows * ncols = arr.size
 
-    If arr is a 2D array, the returned array should look like n subblocks with
+    If arr is a 4 array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
     b, h, w, c = arr.shape
-    return (arr.reshape(b, h//nrows, nrows, -1, ncols, c)
+    print (b, h, w, c, nrows, ncols)
+    return (arr.reshape(b, int(h/int(nrows)), int(nrows), -1, int(ncols), b)
                .swapaxes(1,2)
                .reshape(b, -1, nrows, ncols, c))
  
-def blockshaped_transpose(arr, nrows, ncols):
+def blockshaped_transpose(arr):
     """
-    Return an array of shape (n, nrows, ncols) where
-    n * nrows * ncols = arr.size
+    Return an array of shape (batch_size, n, nrows, ncols, channels) where
+    each n elements is tranposed as to produce E^T
 
-    If arr is a 2D array, the returned array should look like n subblocks with
+    If arr is a 4D array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
-    b, h, w, c = arr.shape
-    return (arr.reshape(b, h//nrows, nrows, -1, ncols, c)
-               .swapaxes(1,2)
-               .reshape(b, -1, nrows, ncols, c))    
+    print ('element tensor shape = {}'.format(arr.shape))
+    nblocks = arr.shape[1]
+    nrows = arr.shape[2]
+    ncols = arr.shape[3]
+    transpose = blockshaped(np.reshape(np.transpose(arr, axes=(2,3,0,1,4)), 
+                                       (-1,int(np.sqrt(nblocks)*nrows),int(np.sqrt(nblocks)*ncols),1)), 
+                                        nrows, ncols)
+    
+    return transpose
 
-def kron_el(matrix1, matrix2):
-    final_list = []
-    sub_list = []
- 
-    count = len(matrix2)
- 
-    for elem1 in matrix1:
-        counter = 0
-        check = 0
-        while check < count:
-            for num1 in elem1:
-                for num2 in matrix2[counter]:
-                    sub_list.append(num1 * num2)
-            counter += 1
-            final_list.append(sub_list)
-            sub_list = []
-            check +=1
- 
-    return final_list
+def np_relu(x):
+    return np.max([x,0])
 
+def vec_np_relu(X):
+    vec = np.vectorize(np_relu)
+    return vec(X)
+
+def tf_relu(X):
+    return tf.nn.relu(X)
+
+def kron_el(x, A):
+    """ Input: Tensor x shape: [batch_size, 28, 28, 1]
+               Tensor A shape: [nrows, ncols] w/ nrows and ncols = filter size
+
+        Reshape tensor1 : [batch_size, nblocks, nchan, nrows, ncols]
+        
+        Computes E^T A E with tensordot op over axes=1
+        
+        Returns tensor of shape : [batch_size, nblocks, nrows, ncols, nchan]  """
+    #Reshape X to 5-D tensor: [batch_size, num_elements, el_size, el_size, channels] using blockshaped
+    nrows, ncols, ochan = A.shape
+    E = blockshaped(x, nrows, ncols) #splits tensor into elements
+    Et = blockshaped_transpose(E)
+    batchsize, nblocks, nrows, ncols, nchan = E.shape
+    E = tf.reshape(E, (-1, nblocks, int(nchan* nrows), ncols)) #for tensor product
+    #batchsize, nblocks, nrows, ncols, nchan = Et.shape
+    #A = np.reshape(A, (1,1,1,nrows,ncols))
+    Et = tf.reshape(Et, [batchsize, nblocks, nchan, nrows, ncols])
+    print ('Et shape = {}, A shape = {}'.format(np.shape(Et), np.shape(A)))
+    EtA = tf.reshape(tf.tensordot(Et, A, axes=1), (-1, nblocks, int(int(ochan)*nrows), ncols))    #computes E^T A
+    output = tf.reshape(tf.matmul(EtA, E), (-1, int(np.sqrt(nblocks)*nrows), int(np.sqrt(nblocks)*nrows), ochan)) #same output shape as EtA and E
+    #Relu activation
+    activation = tf_relu(output)
+    return activation
+    
 def cnn_model_fn(features, labels, mode):
   """Model function for CNN."""
   # Input Layer
   # Reshape X to 4-D tensor: [batch_size, width, height, channels]
   # MNIST images are 28x28 pixels, and have one color channel
   input_layer = tf.reshape(features["x"], [-1, 28, 28, 1])
-
   # Convolutional Layer #1
   # Computes 32 features using a 5x5 filter with ReLU activation.
   # Padding is added to preserve width and height.
   # Input Tensor Shape: [batch_size, 28, 28, 1]
   # Output Tensor Shape: [batch_size, 28, 28, 32]
-  conv1 = tf.layers.conv2d(
-      inputs=input_layer,
-      filters=32,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
+  #conv1 = tf.layers.conv2d(
+      #inputs=input_layer,
+      #filters=32,
+      #kernel_size=[5, 5],
+      #padding="same",
+      #activation=tf.nn.relu)
   
    #REPLACEMENT CODE using tf.tensordot
    #Reshape X to 5-D tensor: [batch_size, num_elements, el_size, el_size, channels] using blockshaped
+  fsize = 4 #filter size
+  nfilters = 32
+   #E = blockshaped(x, fsize, fsize) #splits tensor into elements
+  A = tf.get_variable(name = 'A', shape=(fsize, fsize, nfilters), trainable=True)
+  conv1 = kron_el(input_layer,A)
    #Filter Tensor A: [batch_size, 1, el_size, el_size, 1]; A is a trainable variable
    #need to transpose the elements in order to do op E^T A E
-   #for now assume number of filters/batch_size is 1, so output tensor shape is [1,28,28,1]
-   A = tf.get_variable(name = 'A', trainable=True)
-   for element in grid:
-       tf.transpose(element)*A*element
-
+  
+    
   # Pooling Layer #1
   # First max pooling layer with a 2x2 filter and stride of 2
   # Input Tensor Shape: [batch_size, 28, 28, 32]
@@ -207,14 +229,14 @@ def main(unused_argv):
       steps=2) #,
       #hooks=[logging_hook])
 
-  # Evaluate the model and print results
-#  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-#      x={"x": eval_data},
-#      y=eval_labels,
-#      num_epochs=1,
-#      shuffle=False)
-#  eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
-#  print(eval_results)
+   #Evaluate the model and print results
+  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": eval_data},
+      y=eval_labels,
+      num_epochs=1,
+      shuffle=False)
+  eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
+  print(eval_results)
 
 
 if __name__ == "__main__":
