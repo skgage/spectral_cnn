@@ -34,26 +34,39 @@ def blockshaped(arr, nrows, ncols):
     If arr is a 4 array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
-    b, h, w, c = arr.shape
-    print (b, h, w, c, nrows, ncols)
-    return (arr.reshape(b, int(h/int(nrows)), int(nrows), -1, int(ncols), b)
-               .swapaxes(1,2)
-               .reshape(b, -1, nrows, ncols, c))
+    b = tf.shape(arr)[0]
+    h = tf.shape(arr)[1]
+    w = tf.shape(arr)[2]
+    c = tf.shape(arr)[3]
+    #print ('element tensor shape blockshaped = {}'.format(arr))
+    output = tf.reshape(arr, (b, 49, nrows, -1, ncols, c))
+    #axes_switch tf.shape()
+    output = tf.transpose(output, [0,2,1,3,4,5])
+    output = tf.reshape(output, (b, -1, nrows, ncols, c))
+    #print ('output shape of blockshpaed = {}'.format(output))
+    return output
+               
  
 def blockshaped_transpose(arr):
     """
     Return an array of shape (batch_size, n, nrows, ncols, channels) where
-    each n elements is tranposed as to produce E^T
+    each n elements is tranposnied as to produce E^T
 
     If arr is a 4D array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
-    print ('element tensor shape = {}'.format(arr.shape))
-    nblocks = arr.shape[1]
-    nrows = arr.shape[2]
-    ncols = arr.shape[3]
-    transpose = blockshaped(np.reshape(np.transpose(arr, axes=(2,3,0,1,4)), 
-                                       (-1,int(np.sqrt(nblocks)*nrows),int(np.sqrt(nblocks)*ncols),1)), 
+    #print ('element tensor shape b_trans = {}'.format(arr))
+    nblocks = tf.cast(tf.shape(arr)[1], tf.float32)
+    #if nblocks is None:
+        #print ("clearly is nonetype")
+        #nblocks = int(-1)
+    #else:
+        #print ("thinks it is nonetype")
+       # nblocks = int(nblocks)
+    nrows = tf.shape(arr)[2]
+    ncols = tf.shape(arr)[3]
+    transpose = blockshaped(tf.reshape(tf.transpose(arr, [2,3,0,1,4]), 
+                                       (-1, tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*nrows,tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*ncols,1)),
                                         nrows, ncols)
     
     return transpose
@@ -78,17 +91,25 @@ def kron_el(x, A):
         
         Returns tensor of shape : [batch_size, nblocks, nrows, ncols, nchan]  """
     #Reshape X to 5-D tensor: [batch_size, num_elements, el_size, el_size, channels] using blockshaped
-    nrows, ncols, ochan = A.shape
+    #nrows, ncols, ochan = A.shape
+    nrows = tf.shape(A)[0]
+    ncols = tf.shape(A)[1]
+    ochan = tf.shape(A)[2]
     E = blockshaped(x, nrows, ncols) #splits tensor into elements
     Et = blockshaped_transpose(E)
-    batchsize, nblocks, nrows, ncols, nchan = E.shape
-    E = tf.reshape(E, (-1, nblocks, int(nchan* nrows), ncols)) #for tensor product
+    #batchsize, nblocks, nrows, ncols, nchan = E.shape
+    batchsize = tf.shape(E)[0]
+    nblocks = tf.shape(E)[1]
+    nrows = tf.shape(E)[2]
+    ncols = tf.shape(E)[3]
+    nchan = tf.shape(E)[4]
+    E = tf.reshape(E, (-1, nblocks, nchan* nrows, ncols)) #for tensor product
     #batchsize, nblocks, nrows, ncols, nchan = Et.shape
     #A = np.reshape(A, (1,1,1,nrows,ncols))
     Et = tf.reshape(Et, [batchsize, nblocks, nchan, nrows, ncols])
-    print ('Et shape = {}, A shape = {}'.format(np.shape(Et), np.shape(A)))
-    EtA = tf.reshape(tf.tensordot(Et, A, axes=1), (-1, nblocks, int(int(ochan)*nrows), ncols))    #computes E^T A
-    output = tf.reshape(tf.matmul(EtA, E), (-1, int(np.sqrt(nblocks)*nrows), int(np.sqrt(nblocks)*nrows), ochan)) #same output shape as EtA and E
+    #print ('Et shape = {}, A shape = {}'.format(np.shape(Et), np.shape(A)))
+    EtA = tf.reshape(tf.tensordot(Et, A, axes=1), (-1, nblocks, ochan*nrows, ncols))    #computes E^T A
+    output = tf.reshape(tf.matmul(EtA, E), (-1, tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*nrows, tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*ncols, ochan)) #same output shape as EtA and E
     #Relu activation
     activation = tf_relu(output)
     return activation
@@ -139,6 +160,7 @@ def cnn_model_fn(features, labels, mode):
       kernel_size=[5, 5],
       padding="same",
       activation=tf.nn.relu)
+
   
   # Pooling Layer #2
   # Second max pooling layer with a 2x2 filter and stride of 2
@@ -226,7 +248,7 @@ def main(unused_argv):
       shuffle=True)
   mnist_classifier.train(
       input_fn=train_input_fn,
-      steps=2) #,
+      steps=10000) #,
       #hooks=[logging_hook])
 
    #Evaluate the model and print results
@@ -238,6 +260,7 @@ def main(unused_argv):
   eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
   print(eval_results)
 
+#main()
 
 if __name__ == "__main__":
   tf.app.run()
