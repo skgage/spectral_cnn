@@ -38,8 +38,9 @@ def blockshaped(arr, nrows, ncols):
     h = tf.shape(arr)[1]
     w = tf.shape(arr)[2]
     c = tf.shape(arr)[3]
+    print ((h*w)/(nrows*ncols))
     #print ('element tensor shape blockshaped = {}'.format(arr))
-    output = tf.reshape(arr, (b, 49, nrows, -1, ncols, c))
+    output = tf.reshape(arr, (b, tf.cast((h*w)/(nrows*ncols), tf.int32), nrows, -1, ncols, c))
     #axes_switch tf.shape()
     output = tf.transpose(output, [0,2,1,3,4,5])
     output = tf.reshape(output, (b, -1, nrows, ncols, c))
@@ -66,7 +67,8 @@ def blockshaped_transpose(arr):
     nrows = tf.shape(arr)[2]
     ncols = tf.shape(arr)[3]
     transpose = blockshaped(tf.reshape(tf.transpose(arr, [2,3,0,1,4]), 
-                                       (-1, tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*nrows,tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*ncols,1)),
+                                       (-1, tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*nrows,
+                                        tf.cast(tf.sqrt(nblocks), dtype=tf.int32)*ncols,1)),
                                         nrows, ncols)
     
     return transpose
@@ -103,15 +105,24 @@ def kron_el(x, A):
     nrows = tf.shape(E)[2]
     ncols = tf.shape(E)[3]
     nchan = tf.shape(E)[4]
-    E = tf.reshape(E, (-1, nblocks, nchan* nrows, ncols)) #for tensor product
+    E = tf.reshape(E, (-1, nblocks, nrows*nchan, ncols)) #for tensor product
     #batchsize, nblocks, nrows, ncols, nchan = Et.shape
     #A = np.reshape(A, (1,1,1,nrows,ncols))
     Et = tf.reshape(Et, [batchsize, nblocks, nchan, nrows, ncols])
-    #print ('Et shape = {}, A shape = {}'.format(np.shape(Et), np.shape(A)))
-    EtA = tf.reshape(tf.tensordot(Et, A, axes=1), (-1, nblocks, ochan*nrows, ncols))    #computes E^T A
-    output = tf.reshape(tf.matmul(EtA, E), (-1, tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*nrows, tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*ncols, ochan)) #same output shape as EtA and E
+    EtA = tf.tensordot(Et, A, axes=1)
+    print ('Et shape = {}, A shape = {}'.format(np.shape(Et), np.shape(A)))
+    print ('EtA shape = {}, E shape = {}'.format(np.shape(EtA), np.shape(E)))
+    EtA = tf.reshape(EtA, (-1, nblocks, nrows* ochan, ncols*nchan))  #computes E^T A
+    print ('EtA shape = {} after reshape'.format(np.shape(EtA)))
+    output = tf.matmul(EtA, E)
+    print ('output shape = {}'.format(np.shape(output)))
+    output = tf.reshape(output, (-1, 
+                        tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*nrows,
+                        tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*ncols,
+                        ochan)) #same output shape as EtA and E
     #Relu activation
     activation = tf_relu(output)
+    print ('activation shape = {}'.format(np.shape(activation)))
     return activation
     
 def cnn_model_fn(features, labels, mode):
@@ -125,12 +136,12 @@ def cnn_model_fn(features, labels, mode):
   # Padding is added to preserve width and height.
   # Input Tensor Shape: [batch_size, 28, 28, 1]
   # Output Tensor Shape: [batch_size, 28, 28, 32]
-  #conv1 = tf.layers.conv2d(
-      #inputs=input_layer,
-      #filters=32,
-      #kernel_size=[5, 5],
-      #padding="same",
-      #activation=tf.nn.relu)
+#  conv1 = tf.layers.conv2d(
+#      inputs=input_layer,
+#      filters=32,
+#      kernel_size=[5, 5],
+#      padding="same",
+#      activation=tf.nn.relu)
   
    #REPLACEMENT CODE using tf.tensordot
    #Reshape X to 5-D tensor: [batch_size, num_elements, el_size, el_size, channels] using blockshaped
@@ -154,13 +165,18 @@ def cnn_model_fn(features, labels, mode):
   # Padding is added to preserve width and height.
   # Input Tensor Shape: [batch_size, 14, 14, 32]
   # Output Tensor Shape: [batch_size, 14, 14, 64]
-  conv2 = tf.layers.conv2d(
-      inputs=pool1,
-      filters=64,
-      kernel_size=[5, 5],
-      padding="same",
-      activation=tf.nn.relu)
+#  conv2 = tf.layers.conv2d(
+#      inputs=pool1,
+#      filters=64,
+#      kernel_size=[5, 5],
+#      padding="same",
+#      activation=tf.nn.relu)
 
+  #Replacement for conv2
+  fsize = 7
+  nfilters = 64
+  B = tf.get_variable(name='B', shape=(fsize, fsize, nfilters), trainable=True)
+  conv2 = kron_el(pool1, B)
   
   # Pooling Layer #2
   # Second max pooling layer with a 2x2 filter and stride of 2
@@ -203,7 +219,7 @@ def cnn_model_fn(features, labels, mode):
 
   # Configure the Training Op (for TRAIN mode)
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
     train_op = optimizer.minimize(
         loss=loss,
         global_step=tf.train.get_global_step())
@@ -218,6 +234,7 @@ def cnn_model_fn(features, labels, mode):
 
 
 def main(unused_argv):
+  #tf.reset_default_graph()
   # Load training and eval data
   mnist = tf.contrib.learn.datasets.load_dataset("mnist")
   train_data = mnist.train.images  # Returns np.array
@@ -226,12 +243,12 @@ def main(unused_argv):
   eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
 
   #For practice
-  train_data = np.reshape(train_data[0,:], [1,784])
-  train_labels = np.reshape(train_labels[0], [1,1])
+  #train_data = np.reshape(train_data[:2,:], [2,784])
+  #train_labels = np.reshape(train_labels[:2], [2,1])
 
   # Create the Estimator
   mnist_classifier = tf.estimator.Estimator(
-      model_fn=cnn_model_fn, model_dir="/tmp/mnist_convnet_model")
+      model_fn=cnn_model_fn, model_dir="\checkpoints")
 
   # Set up logging for predictions
   # Log the values in the "Softmax" tensor with label "probabilities"
@@ -243,7 +260,7 @@ def main(unused_argv):
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={"x": train_data},
       y=train_labels,
-      batch_size=1,
+      batch_size=100,
       num_epochs=None,
       shuffle=True)
   mnist_classifier.train(
