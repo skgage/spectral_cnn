@@ -30,7 +30,6 @@ def blockshaped(arr, nrows, ncols):
     """
     Return an array of shape (batch_size, n, nrows, ncols, channels) where
     batchsize * n * nrows * ncols = arr.size
-
     If arr is a 4 array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
@@ -52,7 +51,6 @@ def blockshaped_transpose(arr):
     """
     Return an array of shape (batch_size, n, nrows, ncols, channels) where
     each n elements is tranposnied as to produce E^T
-
     If arr is a 4D array, the returned array should look like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
@@ -86,7 +84,6 @@ def tf_relu(X):
 def kron_el(x, A):
     """ Input: Tensor x shape: [batch_size, 28, 28, 1]
                Tensor A shape: [nrows, ncols] w/ nrows and ncols = filter size
-
         Reshape tensor1 : [batch_size, nblocks, nchan, nrows, ncols]
         
         Computes E^T A E with tensordot op over axes=1
@@ -123,7 +120,20 @@ def kron_el(x, A):
     #Relu activation
     activation = tf_relu(output)
     print ('activation shape = {}'.format(np.shape(activation)))
+    activation = np.reshape(activation, (batchsize, nblocks, nrows, ncols, ochan))
     return activation
+
+def pooling(inputs):
+	batchsize = tf.shape(inputs)[0]
+	nblocks = tf.shape(inputs)[1]
+	nrows = tf.shape(inputs)[2]
+	ncols = tf.shape(inputs)[3]
+	ochan = tf.shape(inputs)[4]
+	for i in range(batchsize):      #for each mesh in the batch
+        	for j in range(nblocks):        #for each element in the individual mesh
+			#based on element dimensions, split element into subelements of size sqrt nrows
+			n_splits = tf.sqrt(nrows)
+			all_splits = tf.split(inputs[i,j,:,:,:], num_or_size_splits=n_splits, axes=[0,1])
     
 def cnn_model_fn(features, labels, mode):
   """Model function for CNN."""
@@ -158,7 +168,8 @@ def cnn_model_fn(features, labels, mode):
   # First max pooling layer with a 2x2 filter and stride of 2
   # Input Tensor Shape: [batch_size, 28, 28, 32]
   # Output Tensor Shape: [batch_size, 14, 14, 32]
-  pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+  # pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+  pool1 = pooling(conv1)
 
   # Convolutional Layer #2
   # Computes 64 features using a 5x5 filter.
@@ -219,7 +230,7 @@ def cnn_model_fn(features, labels, mode):
 
   # Configure the Training Op (for TRAIN mode)
   if mode == tf.estimator.ModeKeys.TRAIN:
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(
         loss=loss,
         global_step=tf.train.get_global_step())
@@ -248,7 +259,7 @@ def main(unused_argv):
 
   # Create the Estimator
   mnist_classifier = tf.estimator.Estimator(
-      model_fn=cnn_model_fn, model_dir="\checkpoints")
+      model_fn=cnn_model_fn, model_dir ="/tmp/mnist_convnet_model")
 
   # Set up logging for predictions
   # Log the values in the "Softmax" tensor with label "probabilities"
