@@ -121,7 +121,7 @@ def kron_el(x, A):
         #Relu activation
         activation = tf_relu(output)
         print ('activation shape = {}'.format(np.shape(activation)))
-        activation = tf.reshape(activation, (batchsize, nblocks, nrows, ncols, ochan))
+        #activation = tf.reshape(activation, (batchsize, nblocks, nrows, ncols, ochan))
         return activation
 
 def pooling(inputs):
@@ -191,6 +191,7 @@ def cnn_model_fn(features, labels, mode):
      #E = blockshaped(x, fsize, fsize) #splits tensor into elements
     A = tf.get_variable(name = 'A', shape=(fsize, fsize, nfilters), trainable=True)
     conv1 = kron_el(input_layer,A)
+    #temp_reshape_conv1 = tf.reshape(conv1, (conv1.shape[0],28,28,nfilters))
     #temp_reshape_conv1 = tf.reshape(conv1, (conv1.shape[0], 49, fsize,fsize, nfilters))
     #print (temp_reshape_conv1)
      #Filter Tensor A: [batch_size, 1, el_size, el_size, 1]; A is a trainable variable
@@ -201,34 +202,34 @@ def cnn_model_fn(features, labels, mode):
     # First max pooling layer with a 2x2 filter and stride of 2
     # Input Tensor Shape: [batch_size, 28, 28, 32]
     # Output Tensor Shape: [batch_size, 14, 14, 32]
-    # pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
-    pool1 = pooling(conv1)
-    temp_reshape_pool1 = tf.reshape(pool1, [pool1.shape[0], 14,14,32])
-    print (temp_reshape_pool1)
+    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+    #pool1 = pooling(conv1)
+    #temp_reshape_pool1 = tf.reshape(pool1, [pool1.shape[0], 14,14,32])
+    #print (temp_reshape_pool1)
     # Convolutional Layer #2
     # Computes 64 features using a 5x5 filter.
     # Padding is added to preserve width and height.
     # Input Tensor Shape: [batch_size, 14, 14, 32]
     # Output Tensor Shape: [batch_size, 14, 14, 64]
-#  conv2 = tf.layers.conv2d(
-#      inputs=pool1,
-#      filters=64,
-#      kernel_size=[5, 5],
-#      padding="same",
-#      activation=tf.nn.relu)
+    '''conv2 = tf.layers.conv2d(
+      inputs=pool1,
+      filters=64,
+      kernel_size=[5, 5],
+      padding="same",
+      activation=tf.nn.relu)'''
 
     #Replacement for conv2
     fsize = 2 #LINEAR ELEMENT SIZE
     nfilters = 64
     B = tf.get_variable(name='B', shape=(fsize, fsize, nfilters), trainable=True)
-    conv2 = kron_el(temp_reshape_pool1, B)
-    temp_reshape_conv2 = tf.reshape(conv2, (conv2.shape[0],14,14,nfilters))
+    conv2 = kron_el(pool1, B)
+    #temp_reshape_conv2 = tf.reshape(conv2, (conv2.shape[0],14,14,nfilters))
     
     # Pooling Layer #2
     # Second max pooling layer with a 2x2 filter and stride of 2
     # Input Tensor Shape: [batch_size, 14, 14, 64]
     # Output Tensor Shape: [batch_size, 7, 7, 64]
-    pool2 = tf.layers.max_pooling2d(inputs=temp_reshape_conv2, pool_size=[2, 2], strides=2)
+    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
     #pool2 = pooling(conv2)
     #temp_reshape_pool1 = tf.reshape(pool2, [pool1.shape[0], 7,7,64])
     #print (temp_reshape_pool2)
@@ -292,12 +293,12 @@ def main(unused_argv):
     eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
 
     #For practice
-    #train_data = np.reshape(train_data[:2,:], [2,784])
-    #train_labels = np.reshape(train_labels[:2], [2,1])
+    #train_data = np.reshape(train_data[:1,:], [1,784])
+    #train_labels = np.reshape(train_labels[:1], [1,1])
 
     # Create the Estimator
     mnist_classifier = tf.estimator.Estimator(
-            model_fn=cnn_model_fn, model_dir ="/tmp/mnist_convnet_model")
+            model_fn=cnn_model_fn, model_dir ="")#/tmp/mnist_convnet_model")
 
     # Set up logging for predictions
     # Log the values in the "Softmax" tensor with label "probabilities"
@@ -309,12 +310,12 @@ def main(unused_argv):
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": train_data},
             y=train_labels,
-            batch_size=1,
+            batch_size=100,
             num_epochs=None,
             shuffle=True)
     mnist_classifier.train(
             input_fn=train_input_fn,
-            steps=10000) #,
+            steps=20000) #,
             #hooks=[logging_hook])
 
      #Evaluate the model and print results
