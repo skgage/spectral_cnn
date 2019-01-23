@@ -83,7 +83,8 @@ def tf_relu(X):
         return tf.nn.relu(X)
 
 def kron_el(x, A):
-        """ Input: Tensor x shape: [batch_size, 28, 28, 1]
+        """ Input: Tensor x shape: [batch_size, nblocks, nrows, ncols, nchans]
+            Input: Tensor x shape: [batch_size, 28, 28, 1]
                              Tensor A shape: [nrows, ncols] w/ nrows and ncols = filter size
                 Reshape tensor1 : [batch_size, nblocks, nchan, nrows, ncols]
                 
@@ -92,10 +93,12 @@ def kron_el(x, A):
                 Returns tensor of shape : [batch_size, nblocks, nrows, ncols, nchan]  """
         #Reshape X to 5-D tensor: [batch_size, num_elements, el_size, el_size, channels] using blockshaped
         #nrows, ncols, ochan = A.shape
+        E = x
         nrows = tf.shape(A)[0]
         ncols = tf.shape(A)[1]
         ochan = tf.shape(A)[2]
-        E = blockshaped(x, nrows, ncols) #splits tensor into elements
+        if tf.shape(x)[1] == 28:
+            E = blockshaped(x, nrows, ncols) #splits tensor into elements
         Et = blockshaped_transpose(E)
         #batchsize, nblocks, nrows, ncols, nchan = E.shape
         batchsize = tf.shape(E)[0]
@@ -118,6 +121,7 @@ def kron_el(x, A):
                                                 tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*nrows,
                                                 tf.cast(tf.sqrt(tf.cast(nblocks, tf.float32)), tf.int32)*ncols,
                                                 ochan)) #same output shape as EtA and E
+        output = tf.reshape(output, (output.shape[0], nblocks,ochan, 4, tf.cast(nrows/2, tf.int32),tf.cast(ncols/2, tf.int32)))
         #Relu activation
         activation = tf_relu(output)
         print ('activation shape = {}'.format(np.shape(activation)))
@@ -190,19 +194,25 @@ def cnn_model_fn(features, labels, mode):
     nfilters = 32
      #E = blockshaped(x, fsize, fsize) #splits tensor into elements
     A = tf.get_variable(name = 'A', shape=(fsize, fsize, nfilters), trainable=True)
+    input_layer = tf.reshape(input_layer, (input_layer.shape[0], -1,fsize,fsize, 1))
     conv1 = kron_el(input_layer,A)
     #temp_reshape_conv1 = tf.reshape(conv1, (conv1.shape[0],28,28,nfilters))
-    #temp_reshape_conv1 = tf.reshape(conv1, (conv1.shape[0], 49, fsize,fsize, nfilters))
+    #temp_reshape_conv1 = tf.reshape(conv1, (conv1.shape[0], 49,nfilters,4, 2,2))
     #print (temp_reshape_conv1)
      #Filter Tensor A: [batch_size, 1, el_size, el_size, 1]; A is a trainable variable
      #need to transpose the elements in order to do op E^T A E
-    
+    x1 = np.reshape(np.array([0.5,0.5], np.float32), (1,2))
+    x2 = np.reshape(x1, (2,1))
+    pool1 = tf.tensordot(tf.reduce_mean(conv1, axis=4), x2, axes=1)
+    print (pool1) #shape should be [1,49,32,4,1]
+    pool1 = tf.reshape(pool1, [pool1.shape[0],49,2,2,32]) #temp
+    print (pool1)
         
     # Pooling Layer #1
     # First max pooling layer with a 2x2 filter and stride of 2
     # Input Tensor Shape: [batch_size, 28, 28, 32]
     # Output Tensor Shape: [batch_size, 14, 14, 32]
-    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+    #pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
     #pool1 = pooling(conv1)
     #temp_reshape_pool1 = tf.reshape(pool1, [pool1.shape[0], 14,14,32])
     #print (temp_reshape_pool1)
@@ -223,13 +233,21 @@ def cnn_model_fn(features, labels, mode):
     nfilters = 64
     B = tf.get_variable(name='B', shape=(fsize, fsize, nfilters), trainable=True)
     conv2 = kron_el(pool1, B)
+    print ('conv2 = {}'.format(conv2))
     #temp_reshape_conv2 = tf.reshape(conv2, (conv2.shape[0],14,14,nfilters))
     
     # Pooling Layer #2
     # Second max pooling layer with a 2x2 filter and stride of 2
     # Input Tensor Shape: [batch_size, 14, 14, 64]
     # Output Tensor Shape: [batch_size, 7, 7, 64]
-    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
+    #pool2 = tf.layers.max_pooling2d(inputs=temp_reshape_conv2, pool_size=[2, 2], strides=2)
+
+    #x1 = np.reshape(np.array([0.5,0.5], np.float32), (1,2))
+    #x2 = np.reshape(x1, (2,1))
+    pool2 = tf.reduce_mean(conv2, axis=3)
+    print ('pool2 = {}'.format(pool2)) #shape should be [1,49,32,4,1]
+    #pool2 = tf.reshape(pool1, [pool.shape[0],49,2,2,32]) #temp
+    #print (pool1)
     #pool2 = pooling(conv2)
     #temp_reshape_pool1 = tf.reshape(pool2, [pool1.shape[0], 7,7,64])
     #print (temp_reshape_pool2)
@@ -310,7 +328,7 @@ def main(unused_argv):
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
             x={"x": train_data},
             y=train_labels,
-            batch_size=100,
+            batch_size=10,
             num_epochs=None,
             shuffle=True)
     mnist_classifier.train(
