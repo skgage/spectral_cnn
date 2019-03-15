@@ -5,32 +5,35 @@ import pickle
 import inc_res
 
 h = 0.5 #TEMPORARY
-T = np.array([[1,0,0,0,0,1/(4*h**2),1/(2*h**3),1/(2*h**3),1/(h**4)],
-    [1,0,1/(2*h),0,1/(h**2),0,-2/(2*h**3),0,-2/(h**4)],
-    [1,0,0,0,0,-1/(4*h**2),1/(2*h**3),-1/(2*h**3),1/(h**4)],
-    [1,1/(2*h),0,1/(h**2),0,0,0,-2/(2*h**3),-2/(h**4)],
-    [1,0,0,-2/(h**2),-2/(h**2),0,0,0,4/(h**4)],
-    [1,-1/(2*h),0,1/(h**2),0,0,0,2/(2*h**3),-2/(h**4)],
-    [1,0,0,0,0,-1/(4*h**2),-1/(2*h**3),1/(2*h**3),1/(h**4)],
-    [1,0,-1/(2*h),0,1/(h**2),0,2/(2*h**3),0,-2/(h**4)],
-    [1,0,0,0,0,1/(4*h**2),-1/(2*h**3),-1/(2*h**3),1/(h**4)]])
-
+def T(h):
+    T = np.array([[1,0,0,0,0,1/(4*h**2),1/(2*h**3),1/(2*h**3),1/(h**4)],
+        [1,0,1/(2*h),0,1/(h**2),0,-2/(2*h**3),0,-2/(h**4)],
+        [1,0,0,0,0,-1/(4*h**2),1/(2*h**3),-1/(2*h**3),1/(h**4)],
+        [1,1/(2*h),0,1/(h**2),0,0,0,-2/(2*h**3),-2/(h**4)],
+        [1,0,0,-2/(h**2),-2/(h**2),0,0,0,4/(h**4)],
+        [1,-1/(2*h),0,1/(h**2),0,0,0,2/(2*h**3),-2/(h**4)],
+        [1,0,0,0,0,-1/(4*h**2),-1/(2*h**3),1/(2*h**3),1/(h**4)],
+        [1,0,-1/(2*h),0,1/(h**2),0,2/(2*h**3),0,-2/(h**4)],
+        [1,0,0,0,0,1/(4*h**2),-1/(2*h**3),-1/(2*h**3),1/(h**4)]])
+    return T
+print ('T = ', T)
 with open('allvars_file.pkl', 'rb') as f:
-    #a = pickle.load(f)
+    #a = pickle.load(f)s
     #print ('a ',a)
     [weights1i, bias1i, weights2i, bias2i, wd1i, bd1i, wd2i, bd2i] = pickle.load(f)
     print (weights1i.shape,bias1i.shape, weights2i.shape,bias2i.shape, wd1i.shape, bd1i.shape,wd2i.shape, bd2i.shape)
 #with open('weights_file.pkl', 'rb') as f:
     #weights1, weights2 = pickle.load(f)
     #print ('weights1 = ', weights1.shape, " weights2 = ", weights2.shape)
-K1 = np.linalg.inv(T)@np.reshape(weights1i, [9,32])
-K2 = np.linalg.inv(T)@np.reshape(weights2i, [9,2048])
-check_w1 = T@K1
+K1 = np.linalg.inv(T(1))@np.reshape(weights1i, [9,32])
+K2 = np.linalg.inv(T(1))@np.reshape(weights2i, [9,2048])
+check_w1 = np.matmul(T(1),K1) #T@K1
+print ('check_w1 = ', check_w1)
 if (check_w1.all() == weights1i.all()):
     print ('Yay2!')
 else:
     print ('Nah2')
-check_w2 = T@K2
+check_w2 = T(1)@K2
 if (check_w2.all() == weights2i.all()):
     print ('Yay2!')
 else:
@@ -55,8 +58,8 @@ def run_cnn():
     y = tf.placeholder(tf.float32, [None, 10])
 
     # create some convolutional layers
-    layer1 = create_new_conv_layer(x_shaped, 1, 32, [3, 3], [2, 2], name='layer1',init_w=np.reshape(T@K1, [3,3,1,32]),init_b = bias1i)
-    layer2 = create_new_conv_layer(layer1, 32, 64, [3, 3], [2, 2], name='layer2',init_w=np.reshape(T@K2, [3,3,32,64]), init_b = bias2i)
+    layer1 = create_new_conv_layer(x_shaped, 1, 32, [3, 3], [2, 2], name='layer1',init_w=np.reshape(T(2)@K1, [3,3,1,32]),init_b = bias1i)
+    layer2 = create_new_conv_layer(layer1, 32, 64, [3, 3], [2, 2], name='layer2',init_w=np.reshape(T(2)@K2, [3,3,32,64]), init_b = bias2i)
     print (layer2.shape)
     #SEE IF POOLING AGAIN ALLOWS US TO USE ALL THE TRAINED VARIABLES O/W TRAINING REQURIED FOR WD1
     layer2 = tf.nn.max_pool(layer2, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
