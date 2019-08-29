@@ -83,10 +83,17 @@ def run_cnn():
     K2 = np.linalg.inv(T(1,1))@tf.reshape(weights2, [9,2048])
     print ('conv layer 2 output OG: ', layer2.shape, tf.size(layer2))
     print('K1: ', K1.shape, ' K2: ', K2.shape)
-    layer1_highres, _, _ = create_new_conv_layer(x_highres_shaped, 1, 32, [3, 3], [2, 2], name='layer1_highres',init_w=tf.reshape(T(1,2)@K1, [3,3,1,32]),init_b = bias1, trainable=False)
+    layer1_highres, weights1_highres, bias1_highres = create_new_conv_layer(x_highres_shaped, 1, 32, [3, 3], [2, 2], name='layer1_highres',init_w=tf.reshape(T(1,2)@K1, [3,3,1,32]),init_b = bias1, trainable=False)
     print ('conv layer 1 output high res: ', layer1_highres.shape, tf.size(layer1_highres))
-    layer2_highres, _, _ = create_new_conv_layer(layer1_highres, 32, 64, [3, 3], [2, 2], name='layer2_highres',init_w=tf.reshape(T(1,2)@K2, [3,3,32,64]), init_b = bias2, trainable=False)
-    
+    layer2_highres, weights2_highres, bias2_highres = create_new_conv_layer(layer1_highres, 32, 64, [3, 3], [2, 2], name='layer2_highres',init_w=tf.reshape(T(1,2)@K2, [3,3,32,64]), init_b = bias2, trainable=False)
+    check_w2 = weights1_highres
+    #T(1,1)@K1 = weights1_highres
+    #T(1,1)@(inv(T(1,1))@weights1) == weights1_highres
+    check_1 = T(1,1)@K1
+    #print ('check 1 shape : ', check_1)
+    check_2 = T(1,1)@tf.reshape(np.linalg.inv(T(1,1))@weights1, [9,32])
+
+
     print ('conv layer 2 output high res: ', layer2_highres.shape, tf.size(layer2_highres))
     #This additional pooling layer is for the higher resolution images
     layer2_highres = tf.nn.max_pool(layer2_highres, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
@@ -172,6 +179,10 @@ def run_cnn():
                 batch_x = train_images[i*batch_size:((i+1)*batch_size), :] #next_batch(batch_size=batch_size)
                 batch_y = train_labels[i*batch_size:((i+1)*batch_size), :]
                 batch_x_highres = train_images_highres[i*batch_size:((i+1)*batch_size), :]                #print ('batch shape: {} and num values: {}'.format(batch_x.shape, np.size(batch_x)))
+                ex_image = np.reshape(batch_x[0,:], [28,28])
+                weights_check, check1, check2 = sess.run([weights1_highres, check_1, check_2], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
+                print ('check1: ', check1.all() == weights_check.all())
+                print ('check2: ', check2.all() == weights_check.all())
                 _, c = sess.run([optimiser, total_cost], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
                 avg_cost += c / total_batch
             var_list = []
