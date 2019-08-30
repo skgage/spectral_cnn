@@ -77,21 +77,22 @@ def run_cnn():
     y = tf.placeholder(tf.float32, [None, 10])
 
     # create some convolutional layers
-    layer1, weights1, bias1 = create_new_conv_layer(x_shaped, 1, 32, [3, 3], [2, 2], name='layer1', trainable=True)
-    layer2, weights2, bias2 = create_new_conv_layer(layer1, 32, 64, [3, 3], [2, 2], name='layer2', trainable=True)
-    K1 = np.linalg.inv(T(1,1))@tf.reshape(weights1, [9,32])
-    K2 = np.linalg.inv(T(1,1))@tf.reshape(weights2, [9,2048])
-    print ('conv layer 2 output OG: ', layer2.shape, tf.size(layer2))
-    print('K1: ', K1.shape, ' K2: ', K2.shape)
-    layer1_highres, weights1_highres, bias1_highres = create_new_conv_layer(x_highres_shaped, 1, 32, [3, 3], [2, 2], name='layer1_highres',init_w=tf.reshape(T(1,2)@K1, [3,3,1,32]),init_b = bias1, trainable=False)
+    layer1, weights1, bias1 = create_new_conv_layer(x_shaped, 1, 32, [3, 3], [2, 2], name='layer1', highRes = False)
+    layer2, weights2, bias2 = create_new_conv_layer(layer1, 32, 64, [3, 3], [2, 2], name='layer2', highRes = False)
+    #K1 = np.linalg.inv(T(1,1))@tf.reshape(weights1, [9,32])
+    #K2 = np.linalg.inv(T(1,1))@tf.reshape(weights2, [9,2048])
+    #print ('conv layer 2 output OG: ', layer2.shape, tf.size(layer2))
+    #print('K1: ', K1.shape, ' K2: ', K2.shape)
+    layer1_highres, weights1_highres, bias1_highres = create_new_conv_layer(x_highres_shaped, 1, 32, [3, 3], [2, 2], name='layer1', highRes = True)
     print ('conv layer 1 output high res: ', layer1_highres.shape, tf.size(layer1_highres))
-    layer2_highres, weights2_highres, bias2_highres = create_new_conv_layer(layer1_highres, 32, 64, [3, 3], [2, 2], name='layer2_highres',init_w=tf.reshape(T(1,2)@K2, [3,3,32,64]), init_b = bias2, trainable=False)
+    layer2_highres, weights2_highres, bias2_highres = create_new_conv_layer(layer1_highres, 32, 64, [3, 3], [2, 2], name='layer2', highRes = True)
     check_w2 = weights1_highres
+    print ('bias 1 shape: {}, bias 1 high res shape: {} '.format(bias1.shape, bias1_highres.shape))
     #T(1,1)@K1 = weights1_highres
     #T(1,1)@(inv(T(1,1))@weights1) == weights1_highres
-    check_1 = T(1,1)@K1
+    #check_1 = T(1,2)@K1
     #print ('check 1 shape : ', check_1)
-    check_2 = T(1,1)@tf.reshape(np.linalg.inv(T(1,1))@weights1, [9,32])
+    #check_2 = T(1,2)@(np.linalg.inv(T(1,1))@tf.reshape(weights1, [9,32]))
 
 
     print ('conv layer 2 output high res: ', layer2_highres.shape, tf.size(layer2_highres))
@@ -104,8 +105,8 @@ def run_cnn():
     flattened = tf.reshape(layer2, [-1, 7 * 7 * 64])
     flattened_highres = tf.reshape(layer2_highres, [-1, 7 * 7 * 64])
     # setup some weights and bias values for this layer, then activate with ReLU
-    wd1 = tf.Variable(tf.truncated_normal([7 * 7 * 64, 1000], stddev=0.03), name='wd1')
-    bd1 = tf.Variable(tf.truncated_normal([1000], stddev=0.01), name='bd1')
+    wd1 = tf.get_variable(name='wd1', initializer=tf.truncated_normal([7 * 7 * 64, 1000], stddev=0.03))
+    bd1 = tf.get_variable(name='bd1', initializer=tf.truncated_normal([1000], stddev=0.01))
     #testing
     #wd1 = tf.Variable(wd1i,name='wd1')
     #bd1 = tf.Variable(bd1i, name='bd1')
@@ -116,8 +117,8 @@ def run_cnn():
     dense_layer1_highres = tf.nn.relu(dense_layer1_highres)
 
     # another layer with softmax activations
-    wd2 = tf.Variable(tf.truncated_normal([1000, 10], stddev=0.03), name='wd2')
-    bd2 = tf.Variable(tf.truncated_normal([10], stddev=0.01), name='bd2')
+    wd2 = tf.get_variable(name='wd2', initializer=tf.truncated_normal([1000, 10], stddev=0.03))
+    bd2 = tf.get_variable(name='bd2', initializer=tf.truncated_normal([10], stddev=0.01))
     #testing
     #wd2 = tf.Variable(wd2i,name='wd2')
     #bd2 = tf.Variable(bd2i, name='bd2')
@@ -151,12 +152,12 @@ def run_cnn():
     with tf.Session() as sess:
         # initialise the variables
         print ('size of dataset: ', mnist.train.images.shape)
-        rand_choice = np.random.randint(mnist.train.images.shape[0], size=int(len(mnist.train.images)/10))
+        rand_choice = np.random.randint(mnist.train.images.shape[0], size=int(len(mnist.train.images)/5))
         train_images = mnist.train.images[rand_choice, :]
         train_labels = mnist.train.labels[rand_choice, :]
         train_images_highres = inc_res.increase_imresolution(mnist.train.images[rand_choice, :], 2, 'bilinear')
-        train_images_lowres = inc_res.increase_imresolution(mnist.train.images[rand_choice, :], 1/2, 'bilinear')
-        print ('OG shape {} High res shape {} Low res shape {}'.format(train_images.shape, train_images_highres.shape, train_images_lowres.shape))
+        #train_images_lowres = inc_res.increase_imresolution(mnist.train.images[rand_choice, :], 1/2, 'bilinear')
+        print ('OG shape {} High res shape {}'.format(train_images.shape, train_images_highres.shape))
         print ('reduced quantity of training data: ', train_images.shape)
         '''train_allres = np.column_stack((np.column_stack((train_images.T, train_images_highres.T)),train_images_lowres.T))
         print ('Stacked training data all res {}'.format(train_allres.shape))
@@ -179,10 +180,12 @@ def run_cnn():
                 batch_x = train_images[i*batch_size:((i+1)*batch_size), :] #next_batch(batch_size=batch_size)
                 batch_y = train_labels[i*batch_size:((i+1)*batch_size), :]
                 batch_x_highres = train_images_highres[i*batch_size:((i+1)*batch_size), :]                #print ('batch shape: {} and num values: {}'.format(batch_x.shape, np.size(batch_x)))
-                ex_image = np.reshape(batch_x[0,:], [28,28])
-                weights_check, check1, check2 = sess.run([weights1_highres, check_1, check_2], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
-                print ('check1: ', check1.all() == weights_check.all())
-                print ('check2: ', check2.all() == weights_check.all())
+                #ex_image = np.reshape(batch_x[0,:], [28,28])
+                #weights_check, check1, check2 = sess.run([weights1_highres, check_1, check_2], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
+                #print ('check1: ', weights_check, check1, check2)
+                #print ('check2: ', check2, weights_check)
+                #b1, b1_highres = sess.run([bias1, bias1_highres], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
+                #print ('bias 1 and bias 1 high res the same?: ', b1.all() == b1_highres.all(), b1, b1_highres)
                 _, c = sess.run([optimiser, total_cost], feed_dict={x: batch_x, x_highres: batch_x_highres, y: batch_y})
                 avg_cost += c / total_batch
             var_list = []
@@ -232,23 +235,33 @@ def run_cnn():
         #print(sess.run(accuracy, feed_dict={x: eval_images, y: mnist.test.labels}))
         '''
 
-def create_new_conv_layer(input_data, num_input_channels, num_filters, filter_shape, pool_shape, name,init_w=None,init_b=None, trainable=True):
+def create_new_conv_layer(input_data, num_input_channels, num_filters, filter_shape, pool_shape, name,init_w=None,init_b=None, trainable=True, highRes = False):
     #layer1 = create_new_conv_layer(x_shaped, 1, 32, [3, 3], [2, 2], name='layer1')
     #layer2 = create_new_conv_layer(layer1, 32, 64, [3, 3], [2, 2], name='layer2')
     # setup the filter input shape for tf.nn.conv_2d
     conv_filt_shape = [filter_shape[0], filter_shape[1], num_input_channels, num_filters]
 
-    # initialise weights and bias for the filter
-    #weights = tf.Variable(tf.truncated_normal(conv_filt_shape, stddev=0.03), name=name+'_W')
-    #bias = tf.Variable(tf.truncated_normal([num_filters]), name=name+'_b')
-
-    if init_w == None and init_b == None:
-        init_w = tf.truncated_normal(conv_filt_shape, stddev=0.03)
-        init_b = tf.truncated_normal([num_filters])
-    #for testing uncomment these
-    weights = tf.Variable(init_w, name=name+'_W',dtype=tf.float32, trainable=trainable)
-    bias = tf.Variable(init_b, name=name+'_b', dtype=tf.float32, trainable=trainable)
     
+
+    #if init_w == None and init_b == None:
+        #init_w = tf.truncated_normal(conv_filt_shape, stddev=0.03)
+        #init_b = tf.truncated_normal([num_filters])
+    #for testing uncomment these
+    #weights = tf.Variable(init_w, name=name+'_W',dtype=tf.float32, trainable=trainable)
+    #bias = tf.Variable(init_b, name=name+'_b', dtype=tf.float32, trainable=trainable)
+    
+    if highRes == True:
+        with tf.variable_scope("foo", reuse=True):
+            weights = tf.get_variable(name=name+'_W', shape=conv_filt_shape)
+            bias = tf.get_variable(name=name+'_b', shape=[num_filters])
+        K = np.linalg.inv(T(1,1))@tf.reshape(weights, [9,-1])
+        weights = tf.reshape(T(1,2)@K, weights.shape)
+        print ('IN CONV LAYER: ', weights.shape)
+    else:
+        # initialise weights and bias for the filter
+            with tf.variable_scope("foo"):
+                weights = tf.get_variable(name=name+'_W', initializer=tf.truncated_normal(conv_filt_shape, stddev=0.03))
+                bias = tf.get_variable(name=name+'_b', initializer=tf.truncated_normal([num_filters]))
 
     # setup the convolutional layer operation
     out_layer = tf.nn.conv2d(input_data, weights, [1, 1, 1, 1], padding='SAME')
